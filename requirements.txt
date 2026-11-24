@@ -1,0 +1,36 @@
+# Driver Monitoring System - Python dependencies (Python 3.10+)
+# Install with: pip install -r requirements.txt
+
+# --- Camera & image processing ---
+opencv-python>=4.8
+numpy>=1.24
+
+# --- Face landmarks (EAR, head pose) ---
+mediapipe>=0.10
+
+# --- Object detection (phone, cup, food) ---
+ultralytics>=8.0        # YOLOv8n; pulls in torch automatically
+
+# --- Backend API ---
+fastapi>=0.110
+uvicorn[standard]>=0.27 # includes websockets support
+websockets>=12.0
+pydantic>=2.0
+
+# --- Config ---
+pyyaml>=6.0
+
+# --- Data storage / handling (CSV logging; SQLite is built into Python) ---
+pandas>=2.0
+
+# --- Audio alerts ---
+simpleaudio>=1.0.4      # if it fails to build on your machine, use playsound instead
+# playsound==1.2.2
+
+# --- Testing ---
+pytest>=8.0
+httpx>=0.26             # required by FastAPI's TestClient
+
+# --- R side (NOT installed with pip) ---
+# Install inside R:
+# install.packages(c("shiny", "dplyr", "ggplot2", "DT", "httr2", "jsonlite", "websocket"))
