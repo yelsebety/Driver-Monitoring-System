@@ -6,3 +6,8 @@ camera:
 ear:
   threshold: 0.21
   drowsy_seconds: 1.5
+
+head_pose:
+  yaw_threshold: 25          
+  pitch_down_threshold: 20   
+  away_seconds: 2.0       
