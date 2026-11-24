@@ -5,11 +5,13 @@ from datetime import datetime
 
 
 class BehaviorClassifier:
-    """Combines EAR, head pose, and object detections over time into Normal, Drowsy, or Distracted."""
+    """Combines EAR tracking, head pose classification, and YOLO object detections 
+    over time into Normal, Drowsy, or Distracted states with precise reasons.
+    """
 
     def __init__(
         self,
-        ear_threshold=0.23,
+        ear_threshold=0.21,
         drowsy_seconds=1.5,
         away_seconds=2.0,
         object_use_seconds=1.5,
@@ -21,13 +23,12 @@ class BehaviorClassifier:
         self.object_use_seconds = object_use_seconds
         self.log_csv = log_csv
 
-        # Timers tracking when each condition started (None if currently inactive)
-        self._eyes_closed_since = None
+        # Timers / tracking state variables
         self._looking_away_since = None
         self._object_seen_since = None
 
         self.current_state = "Normal"
-        self.current_reason = ""
+        self.current_reason = "Attentive"
         self._init_csv()
 
     def _init_csv(self):
@@ -51,25 +52,17 @@ class BehaviorClassifier:
                 ";".join(objects) if objects else "",
             ])
 
-    def update(self, ear, head_pose, detections):
+    def update(self, ear_state, head_label, detections):
         """
-        Updates timers with current frame signals and returns (state, reason).
-        Priority: Drowsy > Distracted (Objects/Head) > Normal.
+        Takes output from EarTracker, HeadPoseEstimator, and ObjectDetector.
+        Evaluates safety rules and returns (state, reason).
+        Priority: Drowsy > Distracted (Objects / Head / Missing) > Normal.
         """
         now = time.monotonic()
         obj_labels = [d["label"] for d in detections]
 
-        # 1. Track eyes closed (EAR below threshold)
-        if ear is not None and ear < self.ear_threshold:
-            if self._eyes_closed_since is None:
-                self._eyes_closed_since = now
-            closed_dur = now - self._eyes_closed_since
-        else:
-            self._eyes_closed_since = None
-            closed_dur = 0.0
-
-        # 2. Track head turned away, looking down, or face missing
-        if head_pose in ("Side", "Down", None):
+        # 1. Track head turned away, looking down, or face completely missing
+        if head_label in ("Side", "Down", None):
             if self._looking_away_since is None:
                 self._looking_away_since = now
             away_dur = now - self._looking_away_since
@@ -77,7 +70,7 @@ class BehaviorClassifier:
             self._looking_away_since = None
             away_dur = 0.0
 
-        # 3. Track distraction objects (phone, cup, bottle, food items, etc.)
+        # 2. Track distraction objects (phone, cup, bottle, food items)
         if obj_labels:
             if self._object_seen_since is None:
                 self._object_seen_since = now
@@ -86,28 +79,35 @@ class BehaviorClassifier:
             self._object_seen_since = None
             obj_dur = 0.0
 
-        # Evaluate state (Drowsy takes highest priority for safety)
+        # 3. Evaluate state hierarchy
         new_state = "Normal"
         reason = "Attentive"
 
-        if closed_dur >= self.drowsy_seconds:
+        # Drowsiness takes highest safety priority (driven by EarTracker)
+        if ear_state["drowsy"]:
             new_state = "Drowsy"
-            reason = f"Eyes closed ({closed_dur:.1f}s)"
+            reason = f"Eyes closed ({ear_state['closed_duration']:.1f}s)"
         elif obj_dur >= self.object_use_seconds:
             new_state = "Distracted"
             unique_objs = ", ".join(sorted(set(obj_labels)))
             reason = f"Using/Holding {unique_objs} ({obj_dur:.1f}s)"
         elif away_dur >= self.away_seconds:
             new_state = "Distracted"
-            pose_desc = "Face missing" if head_pose is None else f"Head {head_pose}"
+            pose_desc = "Face missing" if head_label is None else f"Head {head_label}"
             reason = f"{pose_desc} ({away_dur:.1f}s)"
 
-        # Log whenever the state changes
-        if new_state != self.current_state:
+        # Log state changes
+        if new_state != self.current_state or reason != self.current_reason:
+            # Only log state transitions or significant duration updates to keep CSV clean
+            if new_state != self.current_state:
+                self._log_event(
+                    new_state,
+                    reason,
+                    ear_state["ear"],
+                    head_label,
+                    obj_labels,
+                )
             self.current_state = new_state
-            self.current_reason = reason
-            self._log_event(new_state, reason, ear, head_pose, obj_labels)
-        else:
             self.current_reason = reason
 
         return self.current_state, self.current_reason
@@ -116,7 +116,7 @@ class BehaviorClassifier:
 if __name__ == "__main__":
     import cv2
     from backend.core.camera import Camera, load_config
-    from backend.core.ear_calculator import compute_ear
+    from backend.core.ear_calculator import EarTracker, average_ear
     from backend.core.face_mesh import FaceMesh
     from backend.core.head_pose import HeadPoseEstimator
     from backend.core.object_detector import ObjectDetector
@@ -124,12 +124,14 @@ if __name__ == "__main__":
     cfg = load_config()
     cam_cfg = cfg["camera"]
     hp_cfg = cfg["head_pose"]
+    ear_cfg = cfg["ear"]
     obj_cfg = cfg["object_detector"]
     beh_cfg = cfg["behavior_classifier"]
 
     cam = Camera(cam_cfg["index"], cam_cfg["width"], cam_cfg["height"])
     face_mesh = FaceMesh()
     pose_est = HeadPoseEstimator(hp_cfg["yaw_threshold"], hp_cfg["pitch_down_threshold"])
+    ear_tracker = EarTracker(ear_cfg["threshold"], ear_cfg["drowsy_seconds"])
     obj_det = ObjectDetector(obj_cfg["model"], obj_cfg["confidence"], obj_cfg["target_classes"])
     classifier = BehaviorClassifier(
         ear_threshold=beh_cfg["ear_threshold"],
@@ -139,7 +141,7 @@ if __name__ == "__main__":
         log_csv=beh_cfg["log_csv"],
     )
 
-    print("Press 'c' to calibrate head pose. Press 'q' to quit.")
+    print("Look straight ahead and press 'c' to calibrate head pose. Press 'q' to quit.")
 
     while True:
         frame = cam.read()
@@ -149,20 +151,25 @@ if __name__ == "__main__":
         h, w = frame.shape[:2]
         points = face_mesh.process(frame)
 
-        ear = None
+        ear_state = {"ear": 0.0, "eye_closed": False, "closed_duration": 0.0, "drowsy": False, "blink_count": 0}
         head_label = None
 
         if points is not None:
-            ear = compute_ear(points)
+            ear_val = average_ear(points)
+            ear_state = ear_tracker.update(ear_val)
+
             pose_res = pose_est.estimate(points, w, h)
             if pose_res is not None:
                 pitch, yaw, _ = pose_res
                 head_label = pose_est.classify(pitch, yaw)
 
+        # Detect distraction items (phones, cups, food)
         detections = obj_det.detect(frame)
-        state, reason = classifier.update(ear, head_label, detections)
 
-        # Draw bounding boxes for detected objects
+        # Classify overall driver behavior
+        state, reason = classifier.update(ear_state, head_label, detections)
+
+        # Draw object boxes
         for det in detections:
             x1, y1, x2, y2 = det["box"]
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
@@ -176,31 +183,29 @@ if __name__ == "__main__":
                 2,
             )
 
-        # Overlay state banner
+        # Color-coded UI banner
         colors = {"Normal": (0, 255, 0), "Distracted": (0, 165, 255), "Drowsy": (0, 0, 255)}
-        color = colors.get(state, (255, 255, 255))
+        banner_color = colors.get(state, (255, 255, 255))
 
-        cv2.putText(frame, f"State: {state}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
-        cv2.putText(frame, f"Reason: {reason}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-
-        ear_txt = f"{ear:.2f}" if ear is not None else "N/A"
+        cv2.putText(frame, f"State: {state}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, banner_color, 2)
+        cv2.putText(frame, f"Reason: {reason}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color, 2)
         cv2.putText(
             frame,
-            f"EAR: {ear_txt} | Head: {head_label or 'Missing'}",
+            f"EAR: {ear_state['ear']:.2f} | Blinks: {ear_state['blink_count']} | Head: {head_label or 'Missing'}",
             (10, 105),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.6,
             (255, 255, 255),
             2,
         )
 
-        cv2.imshow("Behavior Classifier Test", frame)
+        cv2.imshow("Driver Behavior Monitor", frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
         if key == ord("c"):
             pose_est.calibrate()
-            print("Calibrated head pose.")
+            print("Head pose calibrated.")
 
     face_mesh.close()
     cam.release()
