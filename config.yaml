@@ -25,3 +25,10 @@ object_detector:
     - "pizza"
     - "donut"
   use_seconds: 1.5             # holding/using item this long = Distracted (used later)
+
+behavior_classifier:
+  ear_threshold: 0.23
+  drowsy_seconds: 1.5
+  away_seconds: 2.0
+  object_use_seconds: 1.5      # holding phone/cup/food this long = Distracted
+  log_csv: "data/events.csv"
