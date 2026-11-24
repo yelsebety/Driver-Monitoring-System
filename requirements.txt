@@ -23,9 +23,7 @@ pyyaml>=6.0
 # --- Data storage / handling (CSV logging; SQLite is built into Python) ---
 pandas>=2.0
 
-# --- Audio alerts ---
-simpleaudio>=1.0.4      # if it fails to build on your machine, use playsound instead
-# playsound==1.2.2
+
 
 # --- Testing ---
 pytest>=8.0
