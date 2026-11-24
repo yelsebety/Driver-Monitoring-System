@@ -2,3 +2,7 @@ camera:
   index: 0
   width: 640
   height: 480
+
+ear:
+  threshold: 0.21
+  drowsy_seconds: 1.5
