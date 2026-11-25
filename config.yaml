@@ -33,7 +33,10 @@ behavior_classifier:
   object_use_seconds: 1.5
   log_csv: "data/events.csv"
 
-
 alert_manager:
-  sound_enabled: true          # set to false if simpleaudio fails to build
+  sound_enabled: true          # set to false if the audio library fails
   cooldown_seconds: 3.0        # minimum seconds between repeated audio alarms
+
+logging:
+  sessions_dir: data/sessions
+  interval_seconds: 1.0        # write a row at most once per second (and instantly when behavior changes)

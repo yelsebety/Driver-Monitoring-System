@@ -6,6 +6,7 @@ from backend.core.ear_calculator import EarTracker, average_ear
 from backend.core.face_mesh import FaceMesh
 from backend.core.head_pose import HeadPoseEstimator
 from backend.core.object_detector import ObjectDetector
+from backend.storage.csv_logger import CsvLogger
 
 
 def main():
@@ -33,6 +34,11 @@ def main():
         sound_enabled=alert_cfg["sound_enabled"],
         cooldown_seconds=alert_cfg["cooldown_seconds"],
     )
+
+    # One new session file (S01, S02, ...) per run
+    log_cfg = cfg.get("logging", {"sessions_dir": "data/sessions", "interval_seconds": 1.0})
+    logger = CsvLogger(log_cfg["sessions_dir"], log_cfg["interval_seconds"])
+    print(f"Logging session {logger.session_id} to {logger.path}")
 
     print("Driver Monitoring System Running...")
     print("1. Look straight ahead and press 'c' to calibrate head pose.")
@@ -70,6 +76,15 @@ def main():
         # Trigger audio & visual alerts based on behavior state
         alert_mgr.trigger(state)
 
+        # Save the result to this session's CSV file
+        logger.log(
+            behavior=classifier.behavior,
+            ear=ear_state["ear"] if points is not None else None,
+            head_pose=head_label or "Away",
+            confidence=classifier.confidence,
+            alert=(state != "Normal"),
+        )
+
         # Draw detected objects
         for det in detections:
             x1, y1, x2, y2 = det["box"]
@@ -88,7 +103,7 @@ def main():
         colors = {"Normal": (0, 255, 0), "Distracted": (0, 165, 255), "Drowsy": (0, 0, 255)}
         banner_color = colors.get(state, (255, 255, 255))
 
-        cv2.putText(frame, f"State: {state}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, banner_color, 2)
+        cv2.putText(frame, f"State: {classifier.behavior}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, banner_color, 2)
         cv2.putText(frame, f"Reason: {reason}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color, 2)
         cv2.putText(
             frame,
@@ -108,6 +123,7 @@ def main():
             pose_est.calibrate()
             print("Head pose calibrated.")
 
+    logger.close()
     face_mesh.close()
     cam.release()
     cv2.destroyAllWindows()
