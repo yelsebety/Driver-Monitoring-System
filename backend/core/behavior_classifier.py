@@ -1,11 +1,13 @@
 import time
+
 from backend.utils.hold_timer import HoldTimer
+from backend.utils.proximity import boxes_overlap
 
 # Object names (as reported by YOLO) grouped into the behaviors from the project PDF
 PHONE_LABELS = {"cell phone", "phone", "mobile phone"}
-DRINK_LABELS = {"cup", "bottle", "wine glass"}
+DRINK_LABELS = {"cup", "bottle", "glass"}
 FOOD_LABELS = {"sandwich", "banana", "apple", "orange", "broccoli", "carrot",
-               "hot dog", "pizza", "donut", "cake", }
+               "hot dog", "pizza", "donut", "cake", "food"}
 
 
 class BehaviorClassifier:
@@ -20,23 +22,23 @@ class BehaviorClassifier:
 
     def __init__(
         self,
-        grace_seconds=0.5,
         ear_threshold=0.21,
         drowsy_seconds=1.5,
         away_seconds=2.0,
         object_use_seconds=1.5,
         log_csv=None,   # no longer used: logging is done by backend/storage/csv_logger.py
+        grace_seconds=0.5,
     ):
         self.ear_threshold = ear_threshold
         self.drowsy_seconds = drowsy_seconds
         self.away_seconds = away_seconds
         self.object_use_seconds = object_use_seconds
 
+        # These timers forgive gaps shorter than grace_seconds, so one missed
+        # YOLO frame or one "Forward" frame no longer restarts the count.
         self._away_timer = HoldTimer(grace_seconds)
         self._object_timer = HoldTimer(grace_seconds)
-        self._last_detections = []
-
-        
+        self._last_detections = []   # used while an object is briefly not detected
 
         self.current_state = "Normal"
         self.current_reason = "Attentive"
@@ -61,16 +63,35 @@ class BehaviorClassifier:
         phone, drink, food = best(PHONE_LABELS), best(DRINK_LABELS), best(FOOD_LABELS)
         if phone is not None:
             return "Using Phone", float(phone)
-        if drink is not None:
-            return "Drinking", float(drink)
-        if food is not None:
+        if drink is not None or food is not None:
+            # Both at the mouth: the more confident detection wins
+            if food is None or (drink is not None and drink >= food):
+                return "Drinking", float(drink)
             return "Eating", float(food)
         return "Distracted", float(max(d["conf"] for d in detections))
 
-    def update(self, ear_state, head_label, detections):
+    @staticmethod
+    def _near_driver(detections, regions):
+        """Keeps only the objects that are actually being used:
+        food / drinks must overlap the mouth area, anything else (phone) must
+        overlap the face area. regions=None turns this check off."""
+        if regions is None:
+            return detections
+        kept = []
+        for d in detections:
+            label = d["label"].lower()
+            area = regions.get("mouth") if (label in DRINK_LABELS or label in FOOD_LABELS) \
+                else regions.get("face")
+            if area is not None and boxes_overlap(d["box"], area):
+                kept.append(d)
+        return kept
+
+    def update(self, ear_state, head_label, detections, regions=None):
         """Takes output from EarTracker, HeadPoseEstimator, and ObjectDetector.
+        regions = proximity.compute_regions(points): where the mouth and face are.
         Priority: Drowsy > objects (phone/drink/food) > head turned away > Normal."""
         now = time.monotonic()
+        detections = self._near_driver(detections, regions)
         obj_labels = [d["label"] for d in detections]
 
         # Head turned away, looking down, or face completely missing

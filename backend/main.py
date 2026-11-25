@@ -7,6 +7,7 @@ from backend.core.face_mesh import FaceMesh
 from backend.core.head_pose import HeadPoseEstimator
 from backend.core.object_detector import ObjectDetector
 from backend.storage.csv_logger import CsvLogger
+from backend.utils.proximity import compute_regions
 
 
 def main():
@@ -71,7 +72,9 @@ def main():
                 head_label = pose_est.classify(pitch, yaw)
 
         detections = obj_det.detect(frame)
-        state, reason = classifier.update(ear_state, head_label, detections)
+        # Where the mouth and face are: objects away from them are ignored
+        regions = compute_regions(points)
+        state, reason = classifier.update(ear_state, head_label, detections, regions)
 
         # Trigger audio & visual alerts based on behavior state
         alert_mgr.trigger(state)
@@ -84,6 +87,11 @@ def main():
             confidence=classifier.confidence,
             alert=(state != "Normal"),
         )
+
+        # Draw the mouth area (blue) so you can see what counts as "near the mouth"
+        if regions["mouth"] is not None:
+            mx1, my1, mx2, my2 = map(int, regions["mouth"])
+            cv2.rectangle(frame, (mx1, my1), (mx2, my2), (255, 128, 0), 1)
 
         # Draw detected objects
         for det in detections:
