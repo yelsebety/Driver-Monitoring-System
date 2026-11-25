@@ -5,7 +5,7 @@ from ultralytics import YOLO
 class ObjectDetector:
     """Detects distraction objects (phone, cup, food) using YOLOv8."""
 
-    def __init__(self, model_path="yolov8n.pt", confidence=0.45, target_classes=None):
+    def __init__(self, model_path="yolov8n.pt", confidence=0.30, target_classes=None):
         self.model = YOLO(model_path)
         self.confidence = confidence
         self.target_classes = set(

@@ -27,11 +27,16 @@ class EarTracker:
     """Turns a stream of EAR values into: eye closed?, how long closed,
     blink count, and 'drowsy' (eyes closed too long)."""
 
-    def __init__(self, threshold=0.21, drowsy_seconds=1.5, window_seconds=60):
+    def __init__(self, threshold=0.21, drowsy_seconds=1.5, window_seconds=60,
+                 reopen_grace=0.3):
         self.threshold = threshold
         self.drowsy_seconds = drowsy_seconds
         self.window_seconds = window_seconds
+        # Eyes must stay open this long before the closure is considered over.
+        # Stops one noisy "open" frame from restarting the closed-eyes timer.
+        self.reopen_grace = reopen_grace
         self.closed_since = None
+        self._last_closed = None
         self.blink_count = 0
         self.blink_times = deque()
 
@@ -42,15 +47,21 @@ class EarTracker:
         if closed:
             if self.closed_since is None:
                 self.closed_since = now
+            self._last_closed = now
+            duration = now - self.closed_since
+        elif (self.closed_since is not None
+              and now - self._last_closed <= self.reopen_grace):
+            # Brief "open" reading inside a closure: keep counting
             duration = now - self.closed_since
         else:
             duration = 0.0
             if self.closed_since is not None:
-                # Eye just reopened: a short closure counts as a blink
-                if now - self.closed_since < self.drowsy_seconds:
+                # Eye really reopened: a short closure counts as a blink
+                if self._last_closed - self.closed_since < self.drowsy_seconds:
                     self.blink_count += 1
                     self.blink_times.append(now)
                 self.closed_since = None
+                self._last_closed = None
 
         # Forget blinks older than the window
         while self.blink_times and now - self.blink_times[0] > self.window_seconds:

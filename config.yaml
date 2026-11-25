@@ -13,8 +13,8 @@ head_pose:
   away_seconds: 2.0       
 
 object_detector:
-  model: "yolov8n.pt"          # auto-downloads on first run
-  confidence: 0.30             # minimum detection score
+  model: "yolov8s.pt"          # auto-downloads on first run
+  confidence: 0.25             # minimum detection score
   target_classes:              # COCO class names to watch for
     - "cell phone"
     - "cup"
@@ -24,7 +24,7 @@ object_detector:
     - "apple"
     - "pizza"
     - "donut"
-    - "food"
+    
   use_seconds: 1.5             # holding/using item this long = Distracted
 
 behavior_classifier:

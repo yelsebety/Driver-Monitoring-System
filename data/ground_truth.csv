@@ -1,0 +1,11 @@
+Session_ID,Start_s,End_s,True_Behavior
+S07,21.0,36.0,Drowsy
+S07,46.0,61.0,Using Phone
+S07,71.0,86.0,Drinking
+S07,96.1,111.1,Eating
+S07,121.1,136.1,Distracted
+S07,156.1,171.1,Drowsy
+S07,181.1,196.1,Using Phone
+S07,206.1,221.1,Drinking
+S07,231.2,246.2,Eating
+S07,256.2,271.2,Distracted

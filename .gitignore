@@ -7,6 +7,7 @@ data/db/*.db-wal
 data/db/*.db-shm
 data/training/*
 data/labeled_tests/*
+training/ground_truth_raw.csv
 models/*.pt
 models/*.onnx
 .Rproj.user/

@@ -1,0 +1,37 @@
+"True","Predicted","Freq"
+"Normal","Normal",123
+"Drowsy","Normal",2
+"Distracted","Normal",13
+"Using Phone","Normal",9
+"Eating","Normal",14
+"Drinking","Normal",24
+"Normal","Drowsy",3
+"Drowsy","Drowsy",18
+"Distracted","Drowsy",0
+"Using Phone","Drowsy",0
+"Eating","Drowsy",0
+"Drinking","Drowsy",0
+"Normal","Distracted",5
+"Drowsy","Distracted",5
+"Distracted","Distracted",9
+"Using Phone","Distracted",0
+"Eating","Distracted",3
+"Drinking","Distracted",0
+"Normal","Using Phone",1
+"Drowsy","Using Phone",0
+"Distracted","Using Phone",0
+"Using Phone","Using Phone",16
+"Eating","Using Phone",0
+"Drinking","Using Phone",0
+"Normal","Eating",2
+"Drowsy","Eating",0
+"Distracted","Eating",0
+"Using Phone","Eating",0
+"Eating","Eating",0
+"Drinking","Eating",0
+"Normal","Drinking",2
+"Drowsy","Drinking",0
+"Distracted","Drinking",4
+"Using Phone","Drinking",0
+"Eating","Drinking",10
+"Drinking","Drinking",0

@@ -1,10 +1,11 @@
 import time
+from backend.utils.hold_timer import HoldTimer
 
 # Object names (as reported by YOLO) grouped into the behaviors from the project PDF
 PHONE_LABELS = {"cell phone", "phone", "mobile phone"}
-DRINK_LABELS = {"cup", "bottle", "glass"}
+DRINK_LABELS = {"cup", "bottle", "wine glass"}
 FOOD_LABELS = {"sandwich", "banana", "apple", "orange", "broccoli", "carrot",
-               "hot dog", "pizza", "donut", "cake", "food"}
+               "hot dog", "pizza", "donut", "cake", }
 
 
 class BehaviorClassifier:
@@ -19,6 +20,7 @@ class BehaviorClassifier:
 
     def __init__(
         self,
+        grace_seconds=0.5,
         ear_threshold=0.21,
         drowsy_seconds=1.5,
         away_seconds=2.0,
@@ -30,8 +32,11 @@ class BehaviorClassifier:
         self.away_seconds = away_seconds
         self.object_use_seconds = object_use_seconds
 
-        self._looking_away_since = None
-        self._object_seen_since = None
+        self._away_timer = HoldTimer(grace_seconds)
+        self._object_timer = HoldTimer(grace_seconds)
+        self._last_detections = []
+
+        
 
         self.current_state = "Normal"
         self.current_reason = "Attentive"
@@ -69,22 +74,12 @@ class BehaviorClassifier:
         obj_labels = [d["label"] for d in detections]
 
         # Head turned away, looking down, or face completely missing
-        if head_label in ("Side", "Down", None):
-            if self._looking_away_since is None:
-                self._looking_away_since = now
-            away_dur = now - self._looking_away_since
-        else:
-            self._looking_away_since = None
-            away_dur = 0.0
+        away_dur = self._away_timer.update(head_label in ("Side", "Down", None), now)
 
         # Distraction objects (phone, cup, bottle, food items)
         if obj_labels:
-            if self._object_seen_since is None:
-                self._object_seen_since = now
-            obj_dur = now - self._object_seen_since
-        else:
-            self._object_seen_since = None
-            obj_dur = 0.0
+            self._last_detections = detections
+        obj_dur = self._object_timer.update(bool(obj_labels), now)
 
         closed_dur = ear_state["closed_duration"]
 
@@ -102,8 +97,10 @@ class BehaviorClassifier:
             confidence = self._strength(closed_dur, self.drowsy_seconds)
         elif obj_dur >= self.object_use_seconds:
             new_state = "Distracted"
-            behavior, confidence = self._object_behavior(detections)
-            unique_objs = ", ".join(sorted(set(obj_labels)))
+            # During a short detection gap 'detections' is empty, so use the last ones
+            held = detections or self._last_detections
+            behavior, confidence = self._object_behavior(held)
+            unique_objs = ", ".join(sorted(set(d["label"] for d in held)))
             reason = f"Using/Holding {unique_objs} ({obj_dur:.1f}s)"
         elif away_dur >= self.away_seconds:
             new_state, behavior = "Distracted", "Distracted"
