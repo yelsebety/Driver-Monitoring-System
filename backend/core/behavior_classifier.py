@@ -2,7 +2,7 @@ import time
 
 # Object names (as reported by YOLO) grouped into the behaviors from the project PDF
 PHONE_LABELS = {"cell phone", "phone", "mobile phone"}
-DRINK_LABELS = {"cup", "bottle", "wine glass", "glass"}
+DRINK_LABELS = {"cup", "bottle", "glass"}
 FOOD_LABELS = {"sandwich", "banana", "apple", "orange", "broccoli", "carrot",
                "hot dog", "pizza", "donut", "cake", "food"}
 
