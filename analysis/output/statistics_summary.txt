@@ -1,0 +1,45 @@
+DRIVER MONITORING SYSTEM - INFERENTIAL STATISTICS
+Generated: 2026-11-26 17:29
+Sessions analysed: S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15, S16, S17, S18, S19  (excluded: S01, S02, S03, S04)
+Rows: 1205   Episodes: 260   Risky episodes: 145   Significance level: 0.05
+
+1. FREQUENCY OF RISKY BEHAVIORS
+Chi-square goodness-of-fit: X2(4) = 25.86, p < 0.001
+-> Risky behaviors are NOT equally frequent. Most common: Distracted.
+
+2. SESSION x BEHAVIOR (risky episodes)
+Chi-square test of independence (Monte Carlo, B = 10000): X2 = 97.47, p = 0.001, Cramer's V = 0.41
+-> The behavior mix differs between sessions. Effect size is medium.
+
+3. RATE OF RISKY EVENTS PER SESSION (Poisson GLM)
+Overall rate: 7.50 risky events per minute.
+Likelihood-ratio test (session effect): Chi2(14) = 47.14, p < 0.001
+Dispersion of the equal-rate model = 3.76 (values well above 1 mean extra session-to-session variation).
+-> Sessions differ in how often risky events happen.
+
+4. EPISODE DURATION BY BEHAVIOR
+Kruskal-Wallis: H(4) = 2.65, p = 0.618, epsilon^2 = 0.02
+-> No evidence that episode length differs between behaviors.
+
+5. CONFIDENCE SCORE BY BEHAVIOR
+Shapiro-Wilk: 5 of 6 behaviors are not normally distributed -> use non-parametric tests.
+Kruskal-Wallis: H(5) = 211.61, p < 0.001, epsilon^2 = 0.18
+-> Confidence differs between behaviors; 9 of 15 pairs differ after Holm correction.
+
+6. TIME PATTERN (logistic regression)
+Risky ~ Minutes + Session: odds ratio per minute = 1.33 (95% CI 1.12-1.58), p = 0.001
+-> Risk increases as a session goes on (controlling for session).
+First vs second half: risky 32.7% vs 45.6%, X2(1) = 20.34, p < 0.001
+   Note: the halves test pools all sessions; the logistic model controls for session, so if they disagree, trust the logistic model (the difference comes from which sessions are long).
+
+7. EAR: DROWSY vs NORMAL
+Mann-Whitney U = 71692, p < 0.001, rank-biserial r = 0.82
+Welch t-test (for comparison): t = 19.33, p < 0.001, mean difference = 0.150
+-> EAR is significantly lower in Drowsy rows: the EAR rule separates the two states.
+
+LIMITATIONS
+- Rows are logged about once per second, so consecutive rows are correlated; row-level tests (5, 6, 7) treat them as independent and p-values may be optimistic.
+- Sessions were recorded by the project team, not a random sample of drivers.
+- The classifier output flickers (median episode = 1 s), which splits one real action into several short episodes and inflates event counts and rates (tests 1-4).
+- Normal confidence measures 'distance from triggering a rule', while the other behaviors use rule strength or YOLO confidence, so confidence values are not on exactly the same scale.
+- Labels are the system's predictions, not verified ground truth.

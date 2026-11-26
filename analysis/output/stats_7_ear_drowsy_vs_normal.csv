@@ -1,0 +1,3 @@
+"Behavior","n","Mean","SD","Median","Pct_below_0.21"
+"Normal",709,0.272,0.126,0.271,14
+"Drowsy",111,0.122,0.065,0.101,93.7

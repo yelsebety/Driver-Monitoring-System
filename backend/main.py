@@ -1,4 +1,6 @@
+import time
 import cv2
+
 from backend.core.alert_manager import AlertManager
 from backend.core.behavior_classifier import BehaviorClassifier
 from backend.core.camera import Camera, load_config
@@ -12,18 +14,42 @@ from backend.utils.proximity import compute_regions
 
 def main():
     cfg = load_config()
+
     cam_cfg = cfg["camera"]
     hp_cfg = cfg["head_pose"]
     ear_cfg = cfg["ear"]
     obj_cfg = cfg["object_detector"]
     beh_cfg = cfg["behavior_classifier"]
-    alert_cfg = cfg.get("alert_manager", {"sound_enabled": True, "cooldown_seconds": 3.0})
 
-    cam = Camera(cam_cfg["index"], cam_cfg["width"], cam_cfg["height"])
+    alert_cfg = cfg.get(
+        "alert_manager",
+        {"sound_enabled": True, "cooldown_seconds": 3.0}
+    )
+
+    cam = Camera(
+        cam_cfg["index"],
+        cam_cfg["width"],
+        cam_cfg["height"]
+    )
+
     face_mesh = FaceMesh()
-    pose_est = HeadPoseEstimator(hp_cfg["yaw_threshold"], hp_cfg["pitch_down_threshold"])
-    ear_tracker = EarTracker(ear_cfg["threshold"], ear_cfg["drowsy_seconds"])
-    obj_det = ObjectDetector(obj_cfg["model"], obj_cfg["confidence"], obj_cfg["target_classes"])
+
+    pose_est = HeadPoseEstimator(
+        hp_cfg["yaw_threshold"],
+        hp_cfg["pitch_down_threshold"]
+    )
+
+    ear_tracker = EarTracker(
+        ear_cfg["threshold"],
+        ear_cfg["drowsy_seconds"]
+    )
+
+    obj_det = ObjectDetector(
+        obj_cfg["model"],
+        obj_cfg["confidence"],
+        obj_cfg["target_classes"]
+    )
+
     classifier = BehaviorClassifier(
         ear_threshold=beh_cfg["ear_threshold"],
         drowsy_seconds=beh_cfg["drowsy_seconds"],
@@ -31,27 +57,87 @@ def main():
         object_use_seconds=beh_cfg["object_use_seconds"],
         log_csv=beh_cfg["log_csv"],
     )
+
     alert_mgr = AlertManager(
         sound_enabled=alert_cfg["sound_enabled"],
         cooldown_seconds=alert_cfg["cooldown_seconds"],
     )
 
     # One new session file (S01, S02, ...) per run
-    log_cfg = cfg.get("logging", {"sessions_dir": "data/sessions", "interval_seconds": 1.0})
-    logger = CsvLogger(log_cfg["sessions_dir"], log_cfg["interval_seconds"])
+    log_cfg = cfg.get(
+        "logging",
+        {
+            "sessions_dir": "data/sessions",
+            "interval_seconds": 1.0
+        }
+    )
+
+    logger = CsvLogger(
+        log_cfg["sessions_dir"],
+        log_cfg["interval_seconds"]
+    )
+
     print(f"Logging session {logger.session_id} to {logger.path}")
+
+    # -------------------------------------------------
+    # AUTOMATIC SHUTDOWN CONFIGURATION
+    # -------------------------------------------------
+
+    NO_FACE_SHUTDOWN_SECONDS = 10
+
+    missing_face_since = None
+    auto_shutdown = False
 
     print("Driver Monitoring System Running...")
     print("1. Look straight ahead and press 'c' to calibrate head pose.")
     print("2. Press 'q' to quit.")
+    print("3. System automatically shuts down after 10 seconds without a face.")
 
     while True:
+
         frame = cam.read()
+
         if frame is None:
             break
 
         h, w = frame.shape[:2]
+
         points = face_mesh.process(frame)
+
+        # -------------------------------------------------
+        # AUTOMATIC SHUTDOWN IF FACE IS MISSING FOR 10 SEC
+        # -------------------------------------------------
+
+        if points is None:
+
+            # Start the timer when the face first disappears.
+            if missing_face_since is None:
+                missing_face_since = time.monotonic()
+
+                print("Face missing. Starting 10-second shutdown timer...")
+
+            missing_duration = (
+                time.monotonic() - missing_face_since
+            )
+
+            if missing_duration >= NO_FACE_SHUTDOWN_SECONDS:
+
+                print(
+                    "Face missing for 10 seconds. "
+                    "Automatically shutting down session."
+                )
+
+                auto_shutdown = True
+                break
+
+        else:
+
+            # Face detected again: reset the timer.
+            missing_face_since = None
+
+        # -------------------------------------------------
+        # INITIALIZE FRAME DETECTION VALUES
+        # -------------------------------------------------
 
         ear_state = {
             "ear": 0.0,
@@ -60,26 +146,44 @@ def main():
             "drowsy": False,
             "blink_count": 0,
         }
+
         head_label = None
 
         if points is not None:
+
             ear_val = average_ear(points)
             ear_state = ear_tracker.update(ear_val)
 
             pose_res = pose_est.estimate(points, w, h)
+
             if pose_res is not None:
                 pitch, yaw, _ = pose_res
                 head_label = pose_est.classify(pitch, yaw)
 
-        detections = obj_det.detect(frame)
-        # Where the mouth and face are: objects away from them are ignored
-        regions = compute_regions(points)
-        state, reason = classifier.update(ear_state, head_label, detections, regions)
+        # -------------------------------------------------
+        # OBJECT DETECTION AND BEHAVIOR CLASSIFICATION
+        # -------------------------------------------------
 
-        # Trigger audio & visual alerts based on behavior state
+        detections = obj_det.detect(frame)
+
+        # Where the mouth and face are:
+        # objects away from them are ignored.
+        regions = compute_regions(points)
+
+        state, reason = classifier.update(
+            ear_state,
+            head_label,
+            detections,
+            regions
+        )
+
+        # Trigger audio and visual alerts based on behavior.
         alert_mgr.trigger(state)
 
-        # Save the result to this session's CSV file
+        # -------------------------------------------------
+        # SAVE RESULT TO SESSION CSV
+        # -------------------------------------------------
+
         logger.log(
             behavior=classifier.behavior,
             ear=ear_state["ear"] if points is not None else None,
@@ -88,15 +192,41 @@ def main():
             alert=(state != "Normal"),
         )
 
-        # Draw the mouth area (blue) so you can see what counts as "near the mouth"
-        if regions["mouth"] is not None:
-            mx1, my1, mx2, my2 = map(int, regions["mouth"])
-            cv2.rectangle(frame, (mx1, my1), (mx2, my2), (255, 128, 0), 1)
+        # -------------------------------------------------
+        # DRAW MOUTH AREA
+        # -------------------------------------------------
 
-        # Draw detected objects
+        if regions["mouth"] is not None:
+
+            mx1, my1, mx2, my2 = map(
+                int,
+                regions["mouth"]
+            )
+
+            cv2.rectangle(
+                frame,
+                (mx1, my1),
+                (mx2, my2),
+                (255, 128, 0),
+                1
+            )
+
+        # -------------------------------------------------
+        # DRAW DETECTED OBJECTS
+        # -------------------------------------------------
+
         for det in detections:
+
             x1, y1, x2, y2 = det["box"]
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 165, 255), 2)
+
+            cv2.rectangle(
+                frame,
+                (x1, y1),
+                (x2, y2),
+                (0, 165, 255),
+                2
+            )
+
             cv2.putText(
                 frame,
                 f"{det['label']} ({det['conf']:.2f})",
@@ -107,12 +237,41 @@ def main():
                 2,
             )
 
-        # HUD Banner overlay
-        colors = {"Normal": (0, 255, 0), "Distracted": (0, 165, 255), "Drowsy": (0, 0, 255)}
-        banner_color = colors.get(state, (255, 255, 255))
+        # -------------------------------------------------
+        # HUD BANNER
+        # -------------------------------------------------
 
-        cv2.putText(frame, f"State: {classifier.behavior}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 1.0, banner_color, 2)
-        cv2.putText(frame, f"Reason: {reason}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, banner_color, 2)
+        colors = {
+            "Normal": (0, 255, 0),
+            "Distracted": (0, 165, 255),
+            "Drowsy": (0, 0, 255)
+        }
+
+        banner_color = colors.get(
+            state,
+            (255, 255, 255)
+        )
+
+        cv2.putText(
+            frame,
+            f"State: {classifier.behavior}",
+            (10, 35),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            banner_color,
+            2
+        )
+
+        cv2.putText(
+            frame,
+            f"Reason: {reason}",
+            (10, 70),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            banner_color,
+            2
+        )
+
         cv2.putText(
             frame,
             f"EAR: {ear_state['ear']:.2f} | Head: {head_label or 'Missing'}",
@@ -124,14 +283,30 @@ def main():
         )
 
         cv2.imshow("Driver Monitoring System", frame)
+
         key = cv2.waitKey(1) & 0xFF
+
         if key == ord("q"):
             break
+
         if key == ord("c"):
             pose_est.calibrate()
             print("Head pose calibrated.")
 
+    # -------------------------------------------------
+    # SESSION CLEANUP
+    # -------------------------------------------------
+
+    if auto_shutdown:
+
+        print("Cleaning up final no-face rows...")
+
+        removed_rows = logger.trim_terminal_no_face()
+
+        print(f"Removed {removed_rows} terminal no-face rows.")
+
     logger.close()
+
     face_mesh.close()
     cam.release()
     cv2.destroyAllWindows()

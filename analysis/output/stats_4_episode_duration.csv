@@ -1,0 +1,6 @@
+"Behavior","Episodes","Mean_s","SD_s","Median_s","Q1_s","Q3_s","Max_s"
+"Drowsy",36,2.5,2.57,2,1,4,12
+"Distracted",45,3.6,6.25,2,1,4,37
+"Using Phone",29,2.76,3.05,2,1,5,11
+"Eating",8,1.25,1.67,1,0,1.25,5
+"Drinking",27,2.59,3.12,1,0,5,11

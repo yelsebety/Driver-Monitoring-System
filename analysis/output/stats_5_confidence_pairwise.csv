@@ -1,0 +1,16 @@
+"Behavior_1","Behavior_2","p_holm","Significant"
+"Drowsy","Normal",1,FALSE
+"Distracted","Normal",1,FALSE
+"Using Phone","Normal",7.47e-24,TRUE
+"Eating","Normal",0.000191,TRUE
+"Drinking","Normal",7.71e-21,TRUE
+"Distracted","Drowsy",1,FALSE
+"Using Phone","Drowsy",1.3e-12,TRUE
+"Eating","Drowsy",0.00772,TRUE
+"Drinking","Drowsy",3.34e-11,TRUE
+"Using Phone","Distracted",1.66e-22,TRUE
+"Eating","Distracted",3.3e-05,TRUE
+"Drinking","Distracted",7.71e-21,TRUE
+"Eating","Using Phone",1,FALSE
+"Drinking","Using Phone",1,FALSE
+"Drinking","Eating",1,FALSE
