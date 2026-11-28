@@ -32,3 +32,18 @@ httpx>=0.26             # required by FastAPI's TestClient
 # --- R side (NOT installed with pip) ---
 # Install inside R:
 # install.packages(c("shiny", "dplyr", "ggplot2", "DT", "httr2", "jsonlite", "websocket"))
+
+# --- Database (PostgreSQL) ---
+sqlalchemy>=2.0
+alembic>=1.13
+psycopg[binary]>=3.2
+
+# --- Settings / secrets ---
+pydantic-settings>=2.0
+python-dotenv>=1.0
+pydantic[email]>=2.0
+
+# --- Login (admin / viewer) ---
+python-multipart>=0.0.9
+pwdlib[argon2]>=0.2
+pyjwt>=2.8
